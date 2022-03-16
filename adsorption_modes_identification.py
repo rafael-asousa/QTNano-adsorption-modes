@@ -1,7 +1,6 @@
 import os
 import abc
 import sys
-import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -124,8 +123,8 @@ class DataTransformer():
         self.embedding = embedding
         self.scaler = scaler
         setup_info = self._setup()
-        self.use_embedding = bool(setup_info['use_embedding'])
-        self.use_scaler = bool(setup_info['use_scaler'])
+        self.use_embedding = eval(setup_info['use_embedding'])
+        self.use_scaler = eval(setup_info['use_scaler'])
         
     def _setup(self):
         with open('setup.in', 'r') as f:
@@ -143,7 +142,7 @@ class DataTransformer():
     def _numerical_columns(self, data: pd.DataFrame) -> list:
         return data.select_dtypes(exclude=['object']).columns
           
-    def _apply_scaling(self, data:pd.DataFrame) -> pd.DataFrame:
+    def _apply_scaling(self, data:pd.DataFrame) -> pd.DataFrame:       
         scaled_df = pd.DataFrame(self.scaler.fit_transform(data), columns = data.columns)
         return scaled_df
 
@@ -152,13 +151,13 @@ class DataTransformer():
 
     def transform_data(self, data: pd.DataFrame) -> pd.DataFrame:
         to_drop_columns = ['configuration_number','energy']
-        data = data.drop([col for col in to_drop_columns if col in data.columns], axis=1, errors='ignore')
+        data = data.drop([col for col in to_drop_columns if col in data.columns], axis=1, errors='ignore')        
 
         categorical_data = data[self._categorical_columns(data)]
         numerical_data   = data[self._numerical_columns(data)]
         
         if not categorical_data.empty:
-            categorical_data = pd.get_dummies(categorical_data).reset_index()
+            categorical_data = pd.get_dummies(categorical_data)
 
         if self.use_scaler:
             numerical_data = self._apply_scaling(numerical_data)
@@ -172,10 +171,24 @@ class DataTransformer():
 
 class DataClassifier():
     def __init__(self, k:int = None, metric_k: str = 'silhouette') -> None:
-        self.k = k
-        if self.k == None:
-            self.metric_k = metric_k #could be distortion, silhouette or calinski_harabasz
+        setup_info = self._setup()
+
+        self.k = setup_info['k']
+        if self.k == 'auto':
+            self.metric_k = setup_info['metric_k'] #could be distortion, silhouette or calinski_harabasz
+        elif int(self.k):
+            self.k = int(self.k)
     
+    def _setup(self):
+        with open('setup.in', 'r') as f:
+            setup = {}
+            for line in f:
+                if line.strip():
+                    (key, val) = line.replace(' ','').strip().split(':')
+                    setup[key] = val
+        
+        return setup
+
     def _choose_K(self, scaled_data: pd.DataFrame, metric: str) -> int:
         visualizer = KElbowVisualizer(KMeans(random_state=42), k=(2,10), metric = metric).fit(scaled_data)
         k = visualizer.elbow_value_ 
@@ -184,7 +197,7 @@ class DataClassifier():
         return k
 
     def modes_classifier(self, scaled_data: pd.DataFrame) -> pd.DataFrame:
-        if self.k == None:
+        if self.k == 'auto':
             self.k = self._choose_K(scaled_data, self.metric_k)
 
         kmeans = KMeans(n_clusters=self.k, random_state=42, n_init=300)
