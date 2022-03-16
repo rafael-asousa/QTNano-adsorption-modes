@@ -1,1 +1,3 @@
 molecule_info: 1-5
+use_scaler: True
+use_embedding: False
