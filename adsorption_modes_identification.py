@@ -50,7 +50,7 @@ class AdsorptionModesIdentifier():
         
         plt.figure()
         plt.bar(features, pca.explained_variance_ratio_, color='black')
-        plt.savefig('PCA_components_2.png')
+        plt.savefig('PCA_components.png')
         
         kmeans = KMeans(n_clusters= self.classifier.k , random_state=42, n_init=300)
         kmeans.fit(X)
@@ -64,7 +64,7 @@ class AdsorptionModesIdentifier():
         y_label = f"PCA 2 ({pca.explained_variance_ratio_[1]:.2f})"
         plt.xlabel(x_label)
         plt.ylabel(y_label)
-        plt.savefig('PCA_distribution_2.png')
+        plt.savefig('PCA_distribution.png')
 
         return None
 
@@ -108,9 +108,11 @@ class DataCollector(abc.ABC):
         return df_structures_data
 
 class DataTransformer():
-    def __init__(self, embedding=PCA(), scaler=StandardScaler()):
+    def __init__(self, embedding=PCA(), scaler=StandardScaler(), use_embedding: bool= True, use_scaler: bool = True):
         self.embedding = embedding
         self.scaler = scaler
+        self.use_embedding = use_embedding
+        self.use_scaler = use_scaler
 
     def _categorical_columns(self, data: pd.DataFrame) -> list:
         return data.select_dtypes(include=['object']).columns
@@ -135,11 +137,13 @@ class DataTransformer():
         if not categorical_data.empty:
             categorical_data = pd.get_dummies(categorical_data).reset_index()
 
-        numerical_data = self._apply_scaling(numerical_data)
+        if self.use_scaler:
+            numerical_data = self._apply_scaling(numerical_data)
 
         data = pd.concat([numerical_data, categorical_data], axis=1)
 
-        data = self._apply_embedding(data)
+        if self.use_embedding:
+            data = self._apply_embedding(data)
 
         return data
 
@@ -247,7 +251,9 @@ class MoleculesCollector(DataCollector):
 
         for atom in ordered_atoms:
             angle = BondAngle(closest_atom_in_molecule[atom],atom,closest_atom_in_substrate[atom],filename)
+            
             bond_dist_sum = BondDist(closest_atom_in_molecule[atom],atom, filename) + BondDist(atom,closest_atom_in_substrate[atom], filename)
+            
             intramolecular_angles.append((atom, atoms[atom], closest_atom_in_substrate[atom], atoms[closest_atom_in_substrate[atom]], closest_atom_in_molecule[atom], atoms[closest_atom_in_molecule[atom]], angle, bond_dist_sum))
         
         return intramolecular_angles
