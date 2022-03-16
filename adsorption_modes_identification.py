@@ -25,20 +25,6 @@ class AdsorptionModesIdentifier():
         self.collector = data_collector
         self.transformer = data_transformer
         self.classifier = data_classifier
-        setup_info = self._setup()
-        self.mol_info = self.setup_info['molecule_info']
-        self.use_embedding = bool(self.setup_info['use_embedding'])
-        self.use_scaler = bool(self.setup_info['use_scaler'])
-
-    def _setup(self):
-        with open('setup.in', 'r') as f:
-            setup = {}
-            for line in f:
-                if line.strip():
-                    (key, val) = line.replace(' ','').strip().split(':')
-                    setup[key] = val
-        
-        return setup
 
     def identify_modes(self) -> None:
         original_data = self.collector.obtain_data()
@@ -88,6 +74,18 @@ class DataCollector(abc.ABC):
             self.path = path
         else:
             raise IOError('path for structures does not exist')
+        setup_info = self._setup()
+        self.mol_info = setup_info['molecule_info']
+
+    def _setup(self):
+        with open('setup.in', 'r') as f:
+            setup = {}
+            for line in f:
+                if line.strip():
+                    (key, val) = line.replace(' ','').strip().split(':')
+                    setup[key] = val
+        
+        return setup
     
     def _get_configuration_number(self, filename) -> int:
         filename = filename.split('/')[-1]
@@ -125,7 +123,19 @@ class DataTransformer():
     def __init__(self, embedding=PCA(), scaler=StandardScaler(), use_embedding: bool= True, use_scaler: bool = True):
         self.embedding = embedding
         self.scaler = scaler
+        setup_info = self._setup()
+        self.use_embedding = bool(setup_info['use_embedding'])
+        self.use_scaler = bool(setup_info['use_scaler'])
         
+    def _setup(self):
+        with open('setup.in', 'r') as f:
+            setup = {}
+            for line in f:
+                if line.strip():
+                    (key, val) = line.replace(' ','').strip().split(':')
+                    setup[key] = val
+        
+        return setup
 
     def _categorical_columns(self, data: pd.DataFrame) -> list:
         return data.select_dtypes(include=['object']).columns
