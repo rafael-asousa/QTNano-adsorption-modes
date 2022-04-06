@@ -151,17 +151,30 @@ class DataTransformer():
 
     def transform_data(self, data: pd.DataFrame) -> pd.DataFrame:
         to_drop_columns = ['configuration_number','energy']
-        data = data.drop([col for col in to_drop_columns if col in data.columns], axis=1, errors='ignore')        
+        data = data.drop([col for col in to_drop_columns if col in data.columns], axis=1, errors='ignore')   
 
         categorical_data = data[self._categorical_columns(data)]
         numerical_data   = data[self._numerical_columns(data)]
         
         if not categorical_data.empty:
-            categorical_data = pd.get_dummies(categorical_data)
+            if self.use_scaler:
+                system_size = int(categorical_data.shape[1]/2)
 
-        if self.use_scaler:
-            numerical_data = self._apply_scaling(numerical_data)
+                categorical_data_embedded = pd.get_dummies(categorical_data[categorical_data.columns[:system_size]])
+                categorical_data_embedded = categorical_data_embedded.apply(lambda x: x/math.sqrt(sum(i**2 for i in x )),axis = 1)
 
+                scaled_categorical_data = categorical_data_embedded.copy()
+
+                
+                categorical_data_embedded = pd.get_dummies(categorical_data[categorical_data.columns[system_size:]])
+                categorical_data_embedded = categorical_data_embedded.apply(lambda x: x/math.sqrt(sum(i**2 for i in x )) ,axis = 1)
+
+                scaled_categorical_data = pd.concat([scaled_categorical_data, categorical_data_embedded],axis=1)
+                
+                categorical_data = scaled_categorical_data.copy()            
+            else:
+                categorical_data = pd.get_dummies(categorical_data)
+  
         data = pd.concat([numerical_data, categorical_data], axis=1)
 
         if self.use_embedding:
@@ -199,7 +212,7 @@ class DataClassifier():
     def modes_classifier(self, scaled_data: pd.DataFrame) -> pd.DataFrame:
         if self.k == 'auto':
             self.k = self._choose_K(scaled_data, self.metric_k)
-
+        
         kmeans = KMeans(n_clusters=self.k, random_state=42, n_init=300)
         kmeans.fit(scaled_data)
         
@@ -211,6 +224,18 @@ class DataClassifier():
 class MoleculesCollector(DataCollector):
     def __init__(self, path) -> None:
         super().__init__(path=path)
+        setup_info = self._setup()
+        self.use_scaler = setup_info['use_scaler']
+
+    def _setup(self):
+        with open('setup.in', 'r') as f:
+            setup = {}
+            for line in f:
+                if line.strip():
+                    (key, val) = line.replace(' ','').strip().split(':')
+                    setup[key] = val
+        
+        return setup
 
     def _molecule_atoms(self):
         intervals = self.mol_info.split(',')
@@ -281,7 +306,12 @@ class MoleculesCollector(DataCollector):
             intramolecular_angles.append((atom, atoms[atom], closest_atom_in_substrate[atom], atoms[closest_atom_in_substrate[atom]], closest_atom_in_molecule[atom], atoms[closest_atom_in_molecule[atom]], angle, bond_dist_sum))
         
         return intramolecular_angles
-            
+    
+    def _normalize(self, values):
+        module = math.sqrt(sum(i*i for i in values))
+
+        return [float(i)/module for i in values]
+
     def _get_molecule_data(self, filename: str):
         bonds_data = self._get_lowest_bonds(filename)
         bonds_data = sorted(bonds_data, key=lambda tup: tup[4])
@@ -295,6 +325,11 @@ class MoleculesCollector(DataCollector):
         angle_strings = [element[3]+'-'+element[1]+'-'+element[5] for element in angles]
         bond_dist_sums = [float(element[7]) for element in angles]
         
+        if self.use_scaler:
+            distances = self._normalize(distances)
+            angle_values = self._normalize(angle_values)
+            bond_dist_sums = self._normalize(bond_dist_sums)
+
         df_conf = pd.DataFrame(data=[[*distances, *bonds, *angle_values, *angle_strings, *bond_dist_sums]])
 
         return df_conf
