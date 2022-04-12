@@ -119,12 +119,11 @@ class DataCollector(abc.ABC):
         return df_structures_data
 
 class DataTransformer():
-    def __init__(self, embedding=PCA(), scaler=StandardScaler(), use_embedding: bool= True, use_scaler: bool = True):
+    def __init__(self, embedding=PCA(), scaler=StandardScaler(), use_scaler: bool = True):
         self.embedding = embedding
         self.scaler = scaler
         setup_info = self._setup()
-        self.use_embedding = eval(setup_info['use_embedding'])
-        self.use_scaler = eval(setup_info['use_scaler'])
+        self.use_scaler = True
         
     def _setup(self):
         with open('setup.in', 'r') as f:
@@ -146,12 +145,9 @@ class DataTransformer():
         scaled_df = pd.DataFrame(self.scaler.fit_transform(data), columns = data.columns)
         return scaled_df
 
-    def _apply_embedding(self, data: pd.DataFrame) -> pd.DataFrame:
-        return pd.DataFrame(self.embedding.fit_transform(data))
-
     def transform_data(self, data: pd.DataFrame) -> pd.DataFrame:
         to_drop_columns = ['configuration_number','energy']
-        data = data.drop([col for col in to_drop_columns if col in data.columns], axis=1, errors='ignore')   
+        data = data.drop([col for col in to_drop_columns if col in data.columns], axis=1, errors='ignore')
 
         categorical_data = data[self._categorical_columns(data)]
         numerical_data   = data[self._numerical_columns(data)]
@@ -174,11 +170,19 @@ class DataTransformer():
                 categorical_data = scaled_categorical_data.copy()            
             else:
                 categorical_data = pd.get_dummies(categorical_data)
-  
-        data = pd.concat([numerical_data, categorical_data], axis=1)
 
-        if self.use_embedding:
-            data = self._apply_embedding(data)
+
+        for num in range(3):
+            numerical_data_slice = numerical_data[numerical_data.columns[system_size*num:system_size*(num+1)]].copy()
+            numerical_data_slice = numerical_data_slice.apply(lambda x: x/math.sqrt(sum(i**2 for i in x )),axis = 1)
+            if num == 0:
+                scaled_numerical_data = numerical_data_slice.copy()
+            else:
+                scaled_numerical_data = pd.concat([scaled_numerical_data, numerical_data_slice],axis=1)
+            
+        numerical_data = scaled_numerical_data.copy()
+
+        data = pd.concat([numerical_data, categorical_data], axis=1)
 
         return data
 
@@ -225,7 +229,7 @@ class MoleculesCollector(DataCollector):
     def __init__(self, path) -> None:
         super().__init__(path=path)
         setup_info = self._setup()
-        self.use_scaler = setup_info['use_scaler']
+        self.use_scaler = True
 
     def _setup(self):
         with open('setup.in', 'r') as f:
@@ -324,11 +328,6 @@ class MoleculesCollector(DataCollector):
         angle_values = [float(element[6]) for element in angles]
         angle_strings = [element[3]+'-'+element[1]+'-'+element[5] for element in angles]
         bond_dist_sums = [float(element[7]) for element in angles]
-        
-        if self.use_scaler:
-            distances = self._normalize(distances)
-            angle_values = self._normalize(angle_values)
-            bond_dist_sums = self._normalize(bond_dist_sums)
 
         df_conf = pd.DataFrame(data=[[*distances, *bonds, *angle_values, *angle_strings, *bond_dist_sums]])
 
